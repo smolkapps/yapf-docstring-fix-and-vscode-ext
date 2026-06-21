@@ -1,0 +1,74 @@
+{
+  "name": "yapf-formatter",
+  "displayName": "YAPF Formatter",
+  "description": "Format Python code with YAPF, applying minimal edits via unified diff.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "publisher": "smolkin",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Formatters"
+  ],
+  "keywords": [
+    "python",
+    "yapf",
+    "formatter",
+    "format"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:python"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "python",
+        "aliases": [
+          "Python"
+        ],
+        "extensions": [
+          ".py",
+          ".pyi"
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "YAPF Formatter",
+      "properties": {
+        "yapfFormatter.executable": {
+          "type": "string",
+          "default": "yapf",
+          "description": "Path to the yapf executable (or a module-runner like 'python -m yapf')."
+        },
+        "yapfFormatter.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra command-line arguments passed to yapf (e.g. ['--style', 'pep8'])."
+        },
+        "yapfFormatter.style": {
+          "type": "string",
+          "default": "",
+          "description": "Value passed to yapf's --style flag. Empty means let yapf resolve its own style (setup.cfg/.style.yapf/pyproject.toml)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

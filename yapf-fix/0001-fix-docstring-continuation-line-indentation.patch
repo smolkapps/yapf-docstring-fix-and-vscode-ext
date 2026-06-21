@@ -1,0 +1,157 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index ccc8726..7f7202c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -3,6 +3,11 @@
+ # This project adheres to [Semantic Versioning](http://semver.org/).
+ 
+ ## (0.41.0) UNRELEASED
++### Fixed
++- Fixed docstring re-indentation: when a block is re-indented, the
++  continuation lines and the closing triple quote of a multiline docstring
++  are now shifted along with its opening line instead of being left at their
++  original indentation (https://github.com/google/yapf/issues/575).
+ ### Added
+ - New `DISABLE_SPLIT_LIST_WITH_COMMENT` flag.
+  `DISABLE_SPLIT_LIST_WITH_COMMENT` is a new knob that changes the
+diff --git a/yapf/yapflib/reformatter.py b/yapf/yapflib/reformatter.py
+index ff09525..5f992e2 100644
+--- a/yapf/yapflib/reformatter.py
++++ b/yapf/yapflib/reformatter.py
+@@ -395,6 +395,55 @@ def _AlignTrailingComments(final_lines):
+       final_lines_index += 1
+ 
+ 
++def _ReindentDocstringContinuationLines(value, old_column, new_indent):
++  """Shift a multiline docstring's continuation lines to a new indentation.
++
++  YAPF re-indents the *opening* line of a docstring (the line holding the
++  opening triple quote) via the token's whitespace prefix, but the continuation
++  lines and the closing triple quote live inside the token's literal ``value``
++  and are emitted verbatim.  When the opening line moves, the rest of the
++  docstring is left at its original indentation, producing inconsistent output
++  (https://github.com/google/yapf/issues/575).
++
++  This shifts every continuation line by the same amount as the opening line so
++  the docstring keeps its internal relative layout while becoming consistent
++  with the new block indentation.  Whitespace-only lines are left untouched so
++  that no trailing whitespace is introduced.
++
++  Arguments:
++    value: (str) The full text of the docstring token, including quotes.
++    old_column: (int) The original source column of the opening quote.
++    new_indent: (str) The new leading-whitespace string for the opening line.
++
++  Returns:
++    The docstring text with its continuation lines re-indented.
++  """
++  if '\n' not in value:
++    return value
++
++  delta = len(new_indent) - old_column
++  if delta == 0:
++    return value
++
++  # Re-emit added indentation using the same whitespace character as the new
++  # opening indent (tabs under USE_TABS, spaces otherwise).
++  indent_char = '\t' if new_indent.startswith('\t') else ' '
++
++  lines = value.split('\n')
++  result = [lines[0]]  # The opening line is already placed by the prefix.
++  for line in lines[1:]:
++    stripped = line.lstrip(' \t')
++    if not stripped:
++      # Blank / whitespace-only line: keep as-is, never add trailing space.
++      result.append(line)
++      continue
++    old_leading = len(line) - len(stripped)
++    new_leading = max(0, old_leading + delta)
++    result.append(indent_char * new_leading + stripped)
++
++  return '\n'.join(result)
++
++
+ def _FormatFinalLines(final_lines):
+   """Compose the final output from the finalized lines."""
+   formatted_code = []
+@@ -402,8 +451,15 @@ def _FormatFinalLines(final_lines):
+     formatted_line = []
+     for tok in line.tokens:
+       if not tok.is_pseudo:
+-        formatted_line.append(tok.formatted_whitespace_prefix)
+-        formatted_line.append(tok.value)
++        whitespace_prefix = tok.formatted_whitespace_prefix
++        formatted_line.append(whitespace_prefix)
++        if tok.is_docstring and '\n' in tok.value:
++          new_indent = whitespace_prefix.rsplit('\n', 1)[-1]
++          formatted_line.append(
++              _ReindentDocstringContinuationLines(tok.value, tok.column,
++                                                  new_indent))
++        else:
++          formatted_line.append(tok.value)
+       elif (not tok.next_token.whitespace_prefix.startswith('\n') and
+             not tok.next_token.whitespace_prefix.startswith(' ')):
+         if (tok.previous_token.value == ':' or
+diff --git a/yapftests/reformatter_basic_test.py b/yapftests/reformatter_basic_test.py
+index 74b1ba4..a6c0259 100644
+--- a/yapftests/reformatter_basic_test.py
++++ b/yapftests/reformatter_basic_test.py
+@@ -697,6 +697,58 @@ class foo(object):\n  \n  def foobar(self):\n    \n    pass\n  \n  def barfoo(se
+     llines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+     self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(llines))
+ 
++  def testDocstringContinuationLineIndentation(self):
++    # Regression test for https://github.com/google/yapf/issues/575 : when a
++    # block is re-indented, the docstring's continuation lines and its closing
++    # triple quote must move with the opening line, not stay at their original
++    # indentation.
++    unformatted_code = textwrap.dedent("""\
++        def GetArgs():
++           '''
++           Some docstrings.
++           '''
++           pass
++    """).replace("'''", '"""')
++    expected_formatted_code = textwrap.dedent("""\
++        def GetArgs():
++          '''
++          Some docstrings.
++          '''
++          pass
++    """).replace("'''", '"""')
++    llines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
++    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(llines))
++
++  def testNestedDocstringContinuationLineIndentation(self):
++    # A multiline docstring nested in a method must keep its body and closing
++    # quote aligned with the (re-indented) opening quote, preserving any extra
++    # relative indentation in the body (issue #575).
++    unformatted_code = textwrap.dedent("""\
++        class C:
++            def m(self):
++                '''Summary.
++
++                Example::
++
++                    x = 1
++                '''
++                return x
++    """).replace("'''", '"""')
++    expected_formatted_code = textwrap.dedent("""\
++        class C:
++
++          def m(self):
++            '''Summary.
++
++            Example::
++
++                x = 1
++            '''
++            return x
++    """).replace("'''", '"""')
++    llines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
++    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(llines))
++
+   def testDocstringAndMultilineComment(self):
+     unformatted_code = textwrap.dedent('''\
+         """Hello world"""

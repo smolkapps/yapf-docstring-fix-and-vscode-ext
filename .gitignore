@@ -1,0 +1,23 @@
+# Node / VS Code extension
+node_modules/
+dist/
+out/
+*.vsix
+coverage/
+.vscode-test/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+build/
+
+# Working checkouts produced by the test runner
+yapf-575-work/
+
+# OS / editor
+.DS_Store
+*.log
