@@ -228,13 +228,21 @@ export function splitLines(text: string): { lines: string[]; trailingNewline: bo
  *
  * Indices in the returned ops are 0-based, end-exclusive, over `original`'s
  * lines.
+ *
+ * A missing final newline is handled explicitly: when `formatted` ends with a
+ * newline but `original` does not (yapf always terminates its output with one),
+ * an op covering the last line is emitted even if no line *content* changed, so
+ * the host can re-emit that line with its newline and reproduce yapf's output
+ * exactly.
  */
 export function computeLineEdits(original: string, formatted: string): EditOp[] {
   if (original === formatted) {
     return [];
   }
-  const a = splitLines(original).lines;
-  const b = splitLines(formatted).lines;
+  const aSplit = splitLines(original);
+  const bSplit = splitLines(formatted);
+  const a = aSplit.lines;
+  const b = bSplit.lines;
 
   // LCS length table. Documents handled by an editor are small enough for the
   // O(n*m) table; YAPF is line-oriented so this is more than adequate.
@@ -295,6 +303,23 @@ export function computeLineEdits(original: string, formatted: string): EditOp[] 
       k++;
     }
     ops.push({ startLine, endLine, newLines });
+  }
+
+  // A trailing-newline-only difference is invisible to the line diff (both
+  // sides split into identical line arrays), so handle it explicitly: yapf
+  // always terminates its output with a newline, and when the original lacked
+  // one the last line must be re-emitted so the host applies it *with* its
+  // line break. If an op already covers (or inserts at) the last line, the
+  // host's replace-through-EOF handling takes care of it; otherwise add an op
+  // rewriting the last line in place. (The reverse direction — removing a
+  // final newline — is not expressible as a whole-line op and never occurs
+  // with yapf, so it is intentionally not handled.)
+  if (bSplit.trailingNewline && !aSplit.trailingNewline && n > 0) {
+    const last = ops.length > 0 ? ops[ops.length - 1] : undefined;
+    const lastLineCovered = last !== undefined && last.endLine >= n;
+    if (!lastLineCovered) {
+      ops.push({ startLine: n - 1, endLine: n, newLines: [a[n - 1]] });
+    }
   }
   return ops;
 }

@@ -19,24 +19,46 @@ function readConfig(): YapfConfig {
   };
 }
 
-function editOpsToTextEdits(doc: vscode.TextDocument, ops: EditOp[]): vscode.TextEdit[] {
+function editOpsToTextEdits(
+  doc: vscode.TextDocument,
+  ops: EditOp[],
+  keepFinalNewline: boolean,
+): vscode.TextEdit[] {
+  // Emit line breaks matching the document so a CRLF file doesn't end up with
+  // mixed line endings (TextEdits are applied verbatim).
+  const eol = doc.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
   const edits: vscode.TextEdit[] = [];
   for (const op of ops) {
     // Replace the original [startLine, endLine) range. We address from the start
     // of `startLine` to the start of `endLine` so that whole lines (including
-    // their trailing newline) are swapped cleanly. When endLine is past the last
-    // line, clamp to the document end.
-    const start = new vscode.Position(op.startLine, 0);
+    // their trailing newline) are swapped cleanly. Ranges at or past the last
+    // line (only reachable when the document lacks a final newline — otherwise
+    // VS Code's phantom empty last line keeps indices in bounds) are anchored
+    // to the true document end.
+    let newText = op.newLines.map((l) => l + eol).join('');
+    let start: vscode.Position;
     let end: vscode.Position;
-    let newText = op.newLines.map((l) => l + '\n').join('');
-    if (op.endLine >= doc.lineCount) {
-      // Replacing through EOF: target the true end and drop the final newline so
-      // we don't introduce a spurious blank line.
+    if (op.startLine >= doc.lineCount) {
+      // Pure insertion past a last line that has no newline: anchor at the true
+      // end and lead with a line break so the appended lines start fresh.
+      start = doc.lineAt(doc.lineCount - 1).range.end;
+      end = start;
+      newText = eol + newText;
+      if (!keepFinalNewline && newText.endsWith(eol)) {
+        newText = newText.slice(0, -eol.length);
+      }
+    } else if (op.endLine >= doc.lineCount) {
+      // Replacing through EOF: target the true end. Keep the final line break
+      // exactly when the formatted output ends with one (yapf always
+      // terminates with a newline), so the edit reproduces yapf's output
+      // instead of silently preserving a missing final newline.
+      start = new vscode.Position(op.startLine, 0);
       end = doc.lineAt(doc.lineCount - 1).range.end;
-      if (newText.endsWith('\n')) {
-        newText = newText.slice(0, -1);
+      if (!keepFinalNewline && newText.endsWith(eol)) {
+        newText = newText.slice(0, -eol.length);
       }
     } else {
+      start = new vscode.Position(op.startLine, 0);
       end = new vscode.Position(op.endLine, 0);
     }
     edits.push(vscode.TextEdit.replace(new vscode.Range(start, end), newText));
@@ -65,7 +87,7 @@ async function provideEdits(
     case 'unchanged':
       return [];
     case 'edits':
-      return editOpsToTextEdits(document, outcome.ops);
+      return editOpsToTextEdits(document, outcome.ops, outcome.formatted.endsWith('\n'));
     case 'error':
       vscode.window.showErrorMessage(`YAPF: ${outcome.message}`);
       return [];

@@ -104,6 +104,17 @@ describe('interpretResult', () => {
     const out = interpretResult({ code: 0, stdout: '', stderr: '' }, 'x=1\n');
     expect(out.kind).toBe('error');
   });
+
+  it('produces edits (not unchanged) when yapf only adds the final newline', () => {
+    const original = 'x = 1';
+    const formatted = 'x = 1\n';
+    const out = interpretResult({ code: 0, stdout: formatted, stderr: '' }, original);
+    expect(out.kind).toBe('edits');
+    if (out.kind === 'edits') {
+      expect(out.formatted).toBe(formatted);
+      expect(out.ops).toEqual([{ startLine: 0, endLine: 1, newLines: ['x = 1'] }]);
+    }
+  });
 });
 
 describe('formatWithYapf', () => {
