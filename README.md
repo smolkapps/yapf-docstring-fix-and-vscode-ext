@@ -162,12 +162,13 @@ Python.
 cd vscode-yapf-formatter
 npm install
 npm run build      # tsc, strict mode
-npm test           # vitest: 44 tests (incl. real-yapf integration when yapf is on PATH)
+npm test           # vitest: 49 tests (incl. real-yapf integration when yapf is on PATH)
 npx @vscode/vsce package --no-dependencies   # -> yapf-formatter-0.1.0.vsix (loadable)
 ```
 
-Verified result: **44 tests passing** (21 diff + 19 orchestration + 4 real-yapf
-integration). `npm run build` clean. Packages to a loadable `.vsix`.
+Verified result: **49 tests passing** (22 diff + 19 orchestration + 4 host-layer
++ 4 real-yapf integration). `npm run build` clean. Packages to a loadable
+`.vsix`.
 
 Load locally: VS Code → Extensions → "Install from VSIX…" → pick the `.vsix`,
 then set `editor.defaultFormatter` to this extension for Python.

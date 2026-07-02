@@ -19,7 +19,7 @@ function readConfig(): YapfConfig {
   };
 }
 
-function editOpsToTextEdits(
+export function editOpsToTextEdits(
   doc: vscode.TextDocument,
   ops: EditOp[],
   keepFinalNewline: boolean,

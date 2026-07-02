@@ -18,8 +18,11 @@ import {
  */
 function applyEditOps(original: string, ops: EditOp[], keepFinalNewline?: boolean): string {
   const { lines, trailingNewline } = splitLines(original);
-  // Apply from the bottom up so earlier indices stay valid.
-  const sorted = [...ops].sort((a, b) => b.startLine - a.startLine);
+  // Apply from the bottom up so earlier indices stay valid. Ops that share a
+  // startLine are ordered by endLine descending, so the wider replacement is
+  // spliced before a zero-width insert anchored at the same line (otherwise the
+  // insert would shift the indices the replacement still needs).
+  const sorted = [...ops].sort((a, b) => b.startLine - a.startLine || b.endLine - a.endLine);
   const out = [...lines];
   for (const op of sorted) {
     out.splice(op.startLine, op.endLine - op.startLine, ...op.newLines);
@@ -140,6 +143,21 @@ describe('computeLineEdits', () => {
     const formatted = 'x = 1\n';
     const ops = computeLineEdits(original, formatted);
     expect(ops).toEqual([{ startLine: 0, endLine: 1, newLines: ['x = 1'] }]);
+    expect(applyEditOps(original, ops, true)).toBe(formatted);
+  });
+
+  it('round-trips when a same-line insert and the added-newline op share a startLine', () => {
+    // Inserting before the last line of a newline-less file produces a
+    // zero-width insert op and the trailing-newline op *both* anchored at the
+    // last line. The applier must splice the wider (endLine-2) op first, or the
+    // insert shifts the index the replacement targets and the output corrupts.
+    const original = 'a\nb';
+    const formatted = 'a\nX\nb\n';
+    const ops = computeLineEdits(original, formatted);
+    expect(ops).toEqual([
+      { startLine: 1, endLine: 1, newLines: ['X'] },
+      { startLine: 1, endLine: 2, newLines: ['b'] },
+    ]);
     expect(applyEditOps(original, ops, true)).toBe(formatted);
   });
 });

@@ -35,7 +35,9 @@ function apply(
 ) {
   const { lines } = splitLines(original);
   const out = [...lines];
-  for (const op of [...ops].sort((a, b) => b.startLine - a.startLine)) {
+  // Bottom-up; ties on startLine ordered by endLine descending so a wider
+  // replacement is spliced before a zero-width insert at the same line.
+  for (const op of [...ops].sort((a, b) => b.startLine - a.startLine || b.endLine - a.endLine)) {
     out.splice(op.startLine, op.endLine - op.startLine, ...op.newLines);
   }
   let text = out.join('\n');

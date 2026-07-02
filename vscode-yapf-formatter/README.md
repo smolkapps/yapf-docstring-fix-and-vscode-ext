@@ -41,7 +41,7 @@ YAPF must be installed and reachable via `yapfFormatter.executable`
 ```bash
 npm install
 npm run build      # tsc (strict)
-npm test           # vitest — 44 tests (4 integration tests run when yapf is on PATH)
+npm test           # vitest — 49 tests (4 integration tests run when yapf is on PATH)
 npx @vscode/vsce package --no-dependencies   # build a .vsix
 ```
 
