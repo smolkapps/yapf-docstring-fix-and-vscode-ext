@@ -9,8 +9,8 @@ Two related YAPF tooling deliverables:
    opening line moves. Ships as a clean `git apply`-able patch with two new
    regression tests, ready for an upstream pull request.
 
-2. **`vscode-yapf-formatter/`** — a Manifest-complete VS Code extension that runs
-   YAPF as a Python document/range formatter, applying **minimal** edits (not a
+2. **`vscode-yapf-formatter/`** — a VS Code extension that runs YAPF as a
+   Python document/range formatter, applying **minimal** edits (not a
    whole-buffer replace) so folds, decorations, and unrelated cursors survive.
 
 Both are verified green on a Linux build host (Ubuntu 24.04, Node 24, Python
@@ -119,7 +119,7 @@ git commit -am "Re-indent docstring continuation lines with the opening line (#5
 
 ## 2. VS Code extension (`vscode-yapf-formatter/`)
 
-A Manifest V3-style VS Code extension registering YAPF as a
+A VS Code extension registering YAPF as a
 `DocumentFormattingEditProvider` and `DocumentRangeFormattingEditProvider` for
 Python.
 
@@ -136,6 +136,10 @@ Python.
 - **Exit-code semantics** (verified against yapf 0.43.0): exit 0 = success
   (stdout is the full result); non-zero (e.g. 1 on a syntax error) = error shown
   to the user, buffer left untouched.
+- **Faithful output.** Applied edits reproduce yapf's output exactly — including
+  the final newline yapf appends to a file that lacked one — and inserted lines
+  follow the document's line endings (LF/CRLF), so CRLF files don't end up with
+  mixed endings.
 
 ### Source
 
@@ -158,12 +162,13 @@ Python.
 cd vscode-yapf-formatter
 npm install
 npm run build      # tsc, strict mode
-npm test           # vitest: 39 tests (incl. real-yapf integration when yapf is on PATH)
+npm test           # vitest: 49 tests (incl. real-yapf integration when yapf is on PATH)
 npx @vscode/vsce package --no-dependencies   # -> yapf-formatter-0.1.0.vsix (loadable)
 ```
 
-Verified result: **39 tests passing** (18 diff + 18 orchestration + 3 real-yapf
-integration). `npm run build` clean. Packages to a loadable `.vsix`.
+Verified result: **49 tests passing** (22 diff + 19 orchestration + 4 host-layer
++ 4 real-yapf integration). `npm run build` clean. Packages to a loadable
+`.vsix`.
 
 Load locally: VS Code → Extensions → "Install from VSIX…" → pick the `.vsix`,
 then set `editor.defaultFormatter` to this extension for Python.

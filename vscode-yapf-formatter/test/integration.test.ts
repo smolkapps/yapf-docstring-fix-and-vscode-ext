@@ -23,15 +23,25 @@ const describeIf = hasYapf ? describe : describe.skip;
 
 const config: YapfConfig = { executable: 'yapf', args: [], style: 'pep8' };
 
-/** Apply ops to original (bottom-up) to reconstruct the formatted text. */
-function apply(original: string, ops: { startLine: number; endLine: number; newLines: string[] }[]) {
-  const { lines, trailingNewline } = splitLines(original);
+/**
+ * Apply ops to original (bottom-up) to reconstruct the formatted text.
+ * Mirrors the host: a final line break is kept exactly when the formatted
+ * output ends with one.
+ */
+function apply(
+  original: string,
+  ops: { startLine: number; endLine: number; newLines: string[] }[],
+  keepFinalNewline: boolean,
+) {
+  const { lines } = splitLines(original);
   const out = [...lines];
-  for (const op of [...ops].sort((a, b) => b.startLine - a.startLine)) {
+  // Bottom-up; ties on startLine ordered by endLine descending so a wider
+  // replacement is spliced before a zero-width insert at the same line.
+  for (const op of [...ops].sort((a, b) => b.startLine - a.startLine || b.endLine - a.endLine)) {
     out.splice(op.startLine, op.endLine - op.startLine, ...op.newLines);
   }
   let text = out.join('\n');
-  if (trailingNewline && text.length > 0) {
+  if (keepFinalNewline && text.length > 0) {
     text += '\n';
   }
   return text;
@@ -43,9 +53,19 @@ describeIf('integration (real yapf)', () => {
     const out = await formatWithYapf(config, { text: original }, spawnRunner);
     expect(out.kind).toBe('edits');
     if (out.kind === 'edits') {
-      expect(apply(original, out.ops)).toBe(out.formatted);
+      expect(apply(original, out.ops, out.formatted.endsWith('\n'))).toBe(out.formatted);
       // Sanity: the formatted text has normalized spacing.
       expect(out.formatted).toContain('def f(a, b):');
+    }
+  });
+
+  it('adds the missing final newline, matching the yapf CLI', async () => {
+    const original = 'x = 1'; // no trailing newline
+    const out = await formatWithYapf(config, { text: original }, spawnRunner);
+    expect(out.kind).toBe('edits');
+    if (out.kind === 'edits') {
+      expect(out.formatted.endsWith('\n')).toBe(true);
+      expect(apply(original, out.ops, true)).toBe(out.formatted);
     }
   });
 

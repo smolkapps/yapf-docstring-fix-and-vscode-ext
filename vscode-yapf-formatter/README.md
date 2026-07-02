@@ -11,6 +11,8 @@ unrelated cursor positions survive a format.
 - Works on unsaved buffers: YAPF is run on stdin (it rejects `--diff` on stdin),
   and the diff is computed client-side.
 - Surfaces YAPF errors (e.g. syntax errors) without touching your file.
+- Reproduces YAPF's output faithfully — including the final newline on files
+  missing one — and inserted lines match the document's line endings (LF/CRLF).
 
 ## Settings
 
@@ -39,7 +41,7 @@ YAPF must be installed and reachable via `yapfFormatter.executable`
 ```bash
 npm install
 npm run build      # tsc (strict)
-npm test           # vitest — 39 tests (3 integration tests run when yapf is on PATH)
+npm test           # vitest — 49 tests (4 integration tests run when yapf is on PATH)
 npx @vscode/vsce package --no-dependencies   # build a .vsix
 ```
 

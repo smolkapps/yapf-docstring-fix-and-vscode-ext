@@ -11,18 +11,24 @@ import {
 /**
  * Apply EditOps (0-based, end-exclusive whole-line ranges) to `original` to
  * reconstruct the formatted text. Mirrors what the VS Code host does, so a
- * successful round-trip proves the ops are correct end-to-end.
+ * successful round-trip proves the ops are correct end-to-end. The host keeps
+ * a final line break exactly when the formatted output ends with one
+ * (`keepFinalNewline`); it defaults to the original's state for tests where
+ * both sides agree.
  */
-function applyEditOps(original: string, ops: EditOp[]): string {
+function applyEditOps(original: string, ops: EditOp[], keepFinalNewline?: boolean): string {
   const { lines, trailingNewline } = splitLines(original);
-  // Apply from the bottom up so earlier indices stay valid.
-  const sorted = [...ops].sort((a, b) => b.startLine - a.startLine);
+  // Apply from the bottom up so earlier indices stay valid. Ops that share a
+  // startLine are ordered by endLine descending, so the wider replacement is
+  // spliced before a zero-width insert anchored at the same line (otherwise the
+  // insert would shift the indices the replacement still needs).
+  const sorted = [...ops].sort((a, b) => b.startLine - a.startLine || b.endLine - a.endLine);
   const out = [...lines];
   for (const op of sorted) {
     out.splice(op.startLine, op.endLine - op.startLine, ...op.newLines);
   }
   let text = out.join('\n');
-  if (trailingNewline && text.length > 0) {
+  if ((keepFinalNewline ?? trailingNewline) && text.length > 0) {
     text += '\n';
   }
   return text;
@@ -109,6 +115,50 @@ describe('computeLineEdits', () => {
     const formatted = 'a\nx = 1\n';
     const ops = computeLineEdits(original, formatted);
     expect(applyEditOps(original, ops)).toBe(formatted);
+  });
+
+  it('emits an edit when the only change is the added final newline', () => {
+    // yapf terminates its output with a newline; a source file lacking one
+    // must still be fixed even though the line *contents* are identical.
+    const original = 'x = 1';
+    const formatted = 'x = 1\n';
+    const ops = computeLineEdits(original, formatted);
+    expect(ops).toEqual([{ startLine: 0, endLine: 1, newLines: ['x = 1'] }]);
+    expect(applyEditOps(original, ops, true)).toBe(formatted);
+  });
+
+  it('adds the final newline even when the last line is otherwise untouched', () => {
+    const original = 'x=1\ny';
+    const formatted = 'x = 1\ny\n';
+    const ops = computeLineEdits(original, formatted);
+    expect(ops).toEqual([
+      { startLine: 0, endLine: 1, newLines: ['x = 1'] },
+      { startLine: 1, endLine: 2, newLines: ['y'] },
+    ]);
+    expect(applyEditOps(original, ops, true)).toBe(formatted);
+  });
+
+  it('does not emit an extra op when a change already covers the last line', () => {
+    const original = 'x=1';
+    const formatted = 'x = 1\n';
+    const ops = computeLineEdits(original, formatted);
+    expect(ops).toEqual([{ startLine: 0, endLine: 1, newLines: ['x = 1'] }]);
+    expect(applyEditOps(original, ops, true)).toBe(formatted);
+  });
+
+  it('round-trips when a same-line insert and the added-newline op share a startLine', () => {
+    // Inserting before the last line of a newline-less file produces a
+    // zero-width insert op and the trailing-newline op *both* anchored at the
+    // last line. The applier must splice the wider (endLine-2) op first, or the
+    // insert shifts the index the replacement targets and the output corrupts.
+    const original = 'a\nb';
+    const formatted = 'a\nX\nb\n';
+    const ops = computeLineEdits(original, formatted);
+    expect(ops).toEqual([
+      { startLine: 1, endLine: 1, newLines: ['X'] },
+      { startLine: 1, endLine: 2, newLines: ['b'] },
+    ]);
+    expect(applyEditOps(original, ops, true)).toBe(formatted);
   });
 });
 
